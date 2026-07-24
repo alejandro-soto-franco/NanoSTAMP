@@ -1,0 +1,17 @@
+anndata
+cellpose>=4,<5
+h5py
+ipython
+jupyterlab
+matplotlib
+numpy
+pandas
+scikit-image
+scikit-learn
+scipy
+seaborn
+tifffile
+
+# Optional GPU acceleration for the large Figure 2 spot-detection notebooks.
+# Install the CuPy build matching the reviewer's CUDA version when desired.
+# cupy-cuda12x

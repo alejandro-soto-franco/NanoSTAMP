@@ -1,0 +1,10 @@
+numpy
+pandas
+matplotlib
+tifffile
+scipy
+scikit-image
+ipython
+
+# Optional GPU acceleration; install the CuPy build appropriate for the local CUDA version.
+# cupy-cuda12x
