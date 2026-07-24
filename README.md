@@ -137,21 +137,4 @@ images are outside the scope of both deposits.
 All publication notebooks are distributed without stored outputs or execution
 counts.
 
-## Citation
 
-If you use this code or the accompanying processed data, please cite:
-
-> [AUTHORS]. [MANUSCRIPT TITLE]. [JOURNAL OR PREPRINT SERVER] ([YEAR]). [DOI]
-
-Please also cite the previously published spatial-omics workflow where
-appropriate.
-
-## Contact
-
-[NAME]  
-[INSTITUTION]  
-[EMAIL]
-
-## License
-
-[LICENSE NAME]
