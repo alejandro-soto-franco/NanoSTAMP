@@ -56,10 +56,11 @@ DAG, including every raw-image rule, against a synthetic fixture instead.
 ## One-command reproduction
 
 ```bash
-pixi run smoke   # whole DAG, synthetic fixture, ~1 minute on CPU
-pixi run test    # unit tests
-pixi run lint    # ruff + pyrefly
-pixi run all     # real data, once downloaded per "Data sources" above
+pixi run smoke               # whole DAG, synthetic fixture, ~1 minute on CPU
+pixi run test                # unit tests
+pixi run lint                # ruff + pyrefly
+pixi run manifest-from-data  # after a manual download, writes config/data_manifest.yaml
+pixi run all                 # real data, once downloaded per "Data sources" above
 ```
 
 ## Local directory structure
@@ -96,8 +97,9 @@ graph TD
     manifest[verify_manifest] --> all
     spleen_lnp[Figure 1d/1e] --> all
     neighborhoods[Figure 1f/1g] --> all
-    cell_functional[Figure 2 cell/functional] --> spatial_neighborhood[Figure 2 spatial neighbourhood]
-    spatial_neighborhood --> all
+    cell_functional[Figure 2 cell/functional + Sections 9-10 figures] --> spatial_neighborhood[Figure 2 spatial neighbourhood]
+    spatial_neighborhood --> spatial_distance[Sections 8-12 distance analyses]
+    spatial_distance --> all
     fixture[make_smoke_fixture, smoke only] -.-> spleen_lnp
     fixture -.-> neighborhoods
     fixture -.-> cell_functional
@@ -152,36 +154,42 @@ upstream value where the fix changes a reported number):
 **Intentional deviations**, documented rather than silently ported:
 
 - **Raw-image spot detection is a generic, configurable port, not five
-  near-duplicated notebooks.** The five raw-image notebooks share two
-  algorithms (LoG-candidate detection + Hamming-distance barcode decoding;
-  Cellpose/threshold nuclear segmentation), each with different marker
-  panels and thresholds; `nanostamp.spot_detection` implements each
-  algorithm once, parameterised by `config.yaml`. The port covers detection
-  and decoding at a fixed threshold only. Per-run threshold calibration
-  (grid search over PBS/positive control fields), the tiled, checkpointed
-  processing the original notebooks needed for hundred-gigabyte stacks, the
-  optional CuPy GPU path, and the raw-intensity "rescue" candidate pass stay
-  out of scope, since none of them change a decoded barcode for a given
-  threshold and none are exercisable without the excluded raw images. These
-  rules run only once a user supplies real TIFFs; `pixi run smoke` exercises
-  the same code path against a tiny synthetic stack instead.
-- **Figure 2 spatial-neighbourhood Sections 8-11 stay out of scope.** The
-  source notebook continues past the neighbourhood clustering (ported in
-  full) into roughly fifteen near-identical paired-region distance/marker
-  analyses between LNP_08- and LNP_10-positive dendritic, CD8, CD4 and B
-  cells. Two shared, reusable functions are ported
-  (`collect_neighbor_pairs`, `paired_region_ttest`) so any of those
-  analyses can be built from them; the ~30 individual output tables each
-  stay as a documented gap rather than a named function, listed in
-  `nanostamp.spatial_neighborhood`'s module docstring.
-- **Figure 2 cell/functional Sections 9-10 stay as workflow concerns, not
-  library functions.** Section 9 is a three-region spatial overlay figure
-  and Section 10 re-derives plot data from tables already computed in
-  Sections 3-8; neither adds new computation.
+  near-duplicated notebooks.** The five raw-image notebooks share three
+  algorithms (LoG-candidate detection with per-marker/decode threshold
+  calibration, Hamming-distance barcode decoding, Cellpose/threshold nuclear
+  segmentation), each with different marker panels and thresholds;
+  `nanostamp.spot_detection` implements each algorithm once, parameterised by
+  `config.yaml`. `calibrate_marker_threshold` and `calibrate_decode_threshold`
+  port Section 4's PBS/positive grid search; `detect_log_candidates_tiled`
+  ports the y-axis tiling with resumable per-tile CSV checkpoints Round 1/2
+  need for their hundred-gigabyte stacks; `raw_intensity_rescue_candidates`
+  ports the raw-intensity "rescue" pass. All are tested on synthetic
+  negative/positive fields (`tests/test_spot_detection_calibration.py`) and
+  exercised end to end by `pixi run smoke`'s synthetic two-region fixture.
+  Only the optional CuPy GPU path stays out of scope: every function here is
+  CPU-only (this repository has no GPU access), which changes runtime, not
+  the numeric result. These rules still run only once a user supplies real
+  TIFFs.
+- **Figure 2 spatial-neighbourhood Sections 8-11 are ported as parameterised
+  primitives, not fifteen near-duplicated functions.** `nanostamp.spatial_distance`
+  implements the two repeated patterns once each - a self-excluding
+  k-nearest-neighbour/radius/hybrid search (`multiscale_neighbor_metrics`,
+  `radius_neighbor_metrics`, `hybrid_neighbor_metrics`) and a marker-state
+  summary (`own_state_summary`, `neighbor_state_summary`) - and
+  `workflow/scripts/run_spatial_neighborhood_distance.py` calls them once per
+  target/reference/marker combination to produce every upstream table for
+  Sections 8-11 and Section 12's eight final paired-panel figures.
+- **Figure 2 cell/functional Sections 9-10 are rendered as real figures.**
+  `workflow/scripts/run_cell_functional.py` renders the Section 9
+  selected-region spatial overlay and Section 10's five replot panels
+  (per-LNP uptake boxplot, cell-type composition stacked bar, OVA+
+  dot-matrix, SIINFEKL+ composition bar, B-cell uptake-vs-transfection
+  scatter) as real PDF/PNG rule outputs under
+  `results/figure_2_cell_functional/figures/`.
 - Every `savefig`/`plt.show()` in the source notebooks is inert (confirmed:
   no notebook actually writes a PDF/PNG despite several printing `"Saved:
-  ..."`); this port's rules do write real PDF/PNG figures where a figure is
-  produced, via `nanostamp.plotting.save_figure`.
+  ..."`); every figure this port produces is a real file, via
+  `nanostamp.plotting.save_figure`.
 - Supplementary Figure 1c's Fiji tile-stitching step is out of scope: it
   produces a visual QC preview only and both the real notebook and this port
   run spot detection and segmentation on individual FOV tiles, not the
