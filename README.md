@@ -1,140 +1,193 @@
-# NanoSTAMP analysis notebooks
+# NanoSTAMP
 
-This GitHub repository contains the cleaned analysis notebooks associated with
-the NanoSTAMP study. It supports analyses presented in Supplementary Figure 1c,
-Figure 1d-g, Figure 2, and Supplementary Figures 6-11.
+A reproducible workflow for the NanoSTAMP study's LNP-barcode spot detection
+and downstream spleen-imaging analysis. Ported from the Hickey Lab's
+[`NanoSTAMP`](https://github.com/HickeyLab/NanoSTAMP) notebook repository into
+a Snakemake pipeline with an importable library, a pinned environment and
+tests. All credit for the underlying method and data belongs to the Hickey
+Lab; cite the associated manuscript.
 
-## Code and data availability
+## What this analysis does
 
-This GitHub repository contains the notebooks and requirement files only. It
-does not contain research data.
+The study detects lipid-nanoparticle (LNP) barcodes in multiplexed spleen
+imaging and relates barcode-positive cells to cell type, spatial
+neighbourhood and functional readouts (luciferase and OVA-antigen expression,
+SIINFEKL-H-2Kb/CD86 dendritic-cell presentation). It supports:
 
-The processed `.csv`, `.csv.gz`, and `.h5ad` inputs are deposited separately in
-the Duke Research Data Repository:
+- **Figure 1d/1e** - spatial-tile and cell-type-composition analysis of
+  single-oligo (Bit_1) versus full-barcode (codebook-matched) LNP calls in
+  PBS and SM-102 LNP-treated spleen.
+- **Figure 1f/1g** - spatial-neighbourhood clustering of the SM-102
+  LNP-treated spleen and neighbourhood abundance among LNP+/LNP− cells.
+- **Figure 2 and Supplementary Figures 6-8** - multiplex LNP uptake,
+  cell-type composition and enrichment, and Luc/OVA/SIINFEKL-H-2Kb
+  functional-readout analysis across ten LNP formulations.
+- **Figure 2 and Supplementary Figures 9-11** - multiplex spatial
+  neighbourhood analysis built on the Figure 2 annotated dataset.
+- **Supplementary Figure 1c** - two-oligo RCA-FISH spot detection,
+  segmentation and per-cell barcode classification.
 
-> https://research.repository.duke.edu/record/554?ln=en
+## Data sources
 
-Raw microscope images and stitched or registered TIFF stacks are not deposited
-on GitHub or in the Duke processed-data package.
+Processed data are deposited in the Duke Research Data Repository:
+<https://research.repository.duke.edu/record/554?ln=en> (folder `For
+Repository`). Raw and registered TIFF stacks are not deposited anywhere and
+are excluded from this repository, exactly as in the upstream release.
 
-The Duke record contains one top-level folder named `For Repository`, which
-contains the processed data only. It does not contain the notebooks or other
-code.
+**This record could not be downloaded from this environment.** Its dynamic
+pages sit behind an AWS WAF bot challenge (HTTP 202 with an
+`x-amzn-waf-action: challenge` header) that blocks headless HTTP clients,
+including `curl` with a browser user agent and this workflow's own fetch
+tooling; `robots.txt` alone is reachable. Downloading it needs a real browser
+session. To reproduce the downstream figures:
 
-The processed-data deposit supports the downstream cell-level, functional, and
-spatial-neighborhood analyses. Image-processing and spot-detection notebooks on
-GitHub document the algorithms, parameters, barcode definitions, and
-quality-control procedures used to generate the processed tables, but their
-image-level steps cannot be rerun without the original images.
+1. Open the record URL in a browser and download the `For Repository` folder.
+2. Rename it `Data`, or place its contents under `data/` matching the layout
+   in the original upstream README (one subdirectory per figure, e.g.
+   `data/Figure_1d_1e_Spleen_LNP/Precomputed_Analysis_Input/`).
+3. Compute each file's SHA-256 (`sha256sum <file>`) and populate
+   `config/data_manifest.yaml`, then run `pixi run verify_manifest`.
+4. Run `pixi run all`.
+
+Because the data could not be fetched here, `pixi run all` has not been run
+against real data in this port; `pixi run smoke` (below) exercises the whole
+DAG, including every raw-image rule, against a synthetic fixture instead.
+
+## One-command reproduction
+
+```bash
+pixi run smoke   # whole DAG, synthetic fixture, ~1 minute on CPU
+pixi run test    # unit tests
+pixi run lint    # ruff + pyrefly
+pixi run all     # real data, once downloaded per "Data sources" above
+```
 
 ## Local directory structure
 
-After cloning the GitHub repository, download the `For Repository` folder from
-the Duke Research Data Repository. Rename `For Repository` to `Data` and place
-it next to the GitHub `Code/` folder:
-
 ```text
 NanoSTAMP/
-├── Code/
-│   ├── *.ipynb
-│   └── requirements_*.txt
-└── Data/
-    ├── Supplementary_Figure_1c_2Oligo_RCA/
-    │   └── Processed_Data/
-    ├── Figure_1d_1e_Spleen_LNP/
-    │   └── Precomputed_Analysis_Input/
-    ├── Figure_1f_1g_Spleen_Neighborhoods/
-    │   ├── Precomputed_Analysis_Input/
-    │   └── Published_Output_Reference/
-    └── Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/
-        └── Precomputed_Downstream_Input/
+├── config/            # config.yaml (real), smoke.yaml (synthetic fixture), data_manifest.yaml
+├── src/nanostamp/      # library: spot detection, spleen LNP, neighbourhoods, cell/functional analysis
+├── workflow/
+│   ├── Snakefile
+│   ├── rules/*.smk
+│   └── scripts/*.py    # thin Snakemake entry points calling the library
+├── tests/
+├── data/               # gitignored; downloaded processed data goes here
+└── results/            # gitignored; workflow outputs go here
 ```
 
-Keep `Code/` and the renamed `Data/` folder at the same level. The notebooks use
-this relative layout to locate the downloaded inputs. `Data/` remains a local
-download and is not part of the GitHub repository.
+## Config reference
 
-## Notebooks
+`config/config.yaml` holds every parameter, seed and path the original
+notebooks hardcoded, grouped by figure: tile sizes and cell-type cutoffs
+(Figure 1d/1e), k-nearest-neighbour and cluster counts (Figure 1f/1g, Figure
+2 neighbourhoods), the ten-entry LNP-formulation table, reference-region gate
+quantiles (Figure 2 cell/functional), and per-notebook spot-detection
+thresholds (raw-image rules). `config/smoke.yaml` overrides the data root to
+a synthetic fixture and shrinks every cluster/elbow parameter so the whole
+DAG runs in under a minute.
 
-| Notebook | Purpose | Runnable with deposited data |
-|---|---|---|
-| `Supplementary_Figure_1c_Image_Processing_and_Quantification.ipynb` | Documents two-oligo RCA-FISH image processing and quantification | Processed outputs can be inspected; image-level steps require the excluded TIFFs |
-| `Figure_1d_Bit_1_Spot_Detection.ipynb` | Documents single-channel Bit_1 punctum detection | No; requires the excluded registered TIFFs |
-| `Figure_1d_1e_Full_Barcode_Spot_Detection.ipynb` | Documents full 12-bit barcode detection and decoding | No; requires the excluded registered TIFFs |
-| `Figure_1d_1e_Spleen_LNP_Analysis.ipynb` | Figure 1d/e spatial-tile and cell-type analyses | Yes |
-| `Figure_1f_1g_Spleen_Neighborhood_Analysis.ipynb` | Figure 1f/g spleen neighborhood analyses | Yes |
-| `Figure_2_and_Supplementary_6_11_Multiplex_LNP_Spot_Detection_Round_1.ipynb` | Documents multiplex spot detection for S1/S2 | No; requires the excluded registered TIFFs |
-| `Figure_2_and_Supplementary_6_11_Multiplex_LNP_Spot_Detection_Round_2.ipynb` | Documents multiplex spot detection for S3/S4 | No; requires the excluded registered TIFFs |
-| `Figure_2_and_Supplementary_6_8_Multiplex_LNP_Cell_and_Functional_Analysis.ipynb` | Cell-level uptake, composition, OVA-expression, and antigen-presentation analyses | Yes |
-| `Figure_2_and_Supplementary_9_11_Multiplex_LNP_Spatial_Neighborhood_Analysis.ipynb` | Recurrent-neighborhood and local immune-response analyses | Yes, after the preceding Figure 2 notebook |
+## DAG
 
-## Installation
-
-Python 3.10 or later is recommended.
-
-```bash
-git clone https://github.com/HickeyLab/NanoSTAMP.git
-cd NanoSTAMP
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r Code/requirements_publication_all.txt
-python -m jupyter lab
+```mermaid
+graph TD
+    manifest[verify_manifest] --> all
+    spleen_lnp[Figure 1d/1e] --> all
+    neighborhoods[Figure 1f/1g] --> all
+    cell_functional[Figure 2 cell/functional] --> spatial_neighborhood[Figure 2 spatial neighbourhood]
+    spatial_neighborhood --> all
+    fixture[make_smoke_fixture, smoke only] -.-> spleen_lnp
+    fixture -.-> neighborhoods
+    fixture -.-> cell_functional
+    fixture -.-> raw_image[raw-image spot detection x4 + Supplementary 1c, smoke only]
 ```
-
-On Windows, activate the environment with:
-
-```powershell
-.venv\Scripts\activate
-```
-
-Workflow-specific requirement files are also provided in `Code/`.
-
-## Recommended execution order
-
-### Figure 1d and Figure 1e
-
-Run `Figure_1d_1e_Spleen_LNP_Analysis.ipynb`. It reads the deposited compact
-Bit_1 calls, full-barcode calls, and frozen cell annotations. The two
-spot-detection notebooks are methodological records and do not need to be run.
-
-### Figure 1f and Figure 1g
-
-Run `Figure_1f_1g_Spleen_Neighborhood_Analysis.ipynb`.
-
-### Figure 2 and Supplementary Figures 6-11
-
-Run these notebooks in order:
-
-1. `Figure_2_and_Supplementary_6_8_Multiplex_LNP_Cell_and_Functional_Analysis.ipynb`
-2. `Figure_2_and_Supplementary_9_11_Multiplex_LNP_Spatial_Neighborhood_Analysis.ipynb`
-
-The first notebook creates the merged annotated dataset consumed by the second.
-The two multiplex spot-detection notebooks are methodological records and do
-not need to be run.
-
-## Upstream frozen analyses
-
-Cell segmentation, clustering, and cell-type annotation were performed using
-the previously published spatial-omics workflow and are treated as frozen
-upstream inputs. The deposited files contain the cell identifiers, centroids,
-measurements, annotations, and processed spot calls needed for the downstream
-analyses.
 
 ## Outputs
 
-The downstream notebooks display manuscript plots inline and write analysis
-tables or merged datasets beneath the corresponding `Data/*/Generated_Output/`
-directory when applicable.
+Each analysis rule writes its tables under
+`results/<figure>/tables/*.csv`; `figure_2_cell_functional` additionally
+writes the merged `Figure_2_annotated_cells.h5ad` consumed by
+`figure_2_spatial_neighborhood`. No committed figure image files are shipped;
+regenerate them by running the workflow.
 
-## Reproducibility scope
+## Parity with upstream
 
-The GitHub code and companion Duke dataset together support reproduction
-beginning from the deposited processed CSV and H5AD files. They do not support
-image-level reproduction beginning from raw microscopy data because those
-images are outside the scope of both deposits.
+The upstream notebooks are distributed **without stored outputs or execution
+counts** (confirmed: zero cells across all nine notebooks carry a stored
+`outputs` array), so there is no notebook-recorded number to diff a ported
+run against. Because the Duke deposit could not be downloaded here (see
+"Data sources"), no real-data run has been produced either. `~/planning/NanoSTAMP/parity.md`
+records this and the full state of the port; the summary is: fidelity was
+checked by re-deriving each notebook's computation as a pure function against
+hand-computed small fixtures (see `tests/`), not by comparing against a
+stored reference number, because no such number exists upstream or is
+reachable here.
 
-All publication notebooks are distributed without stored outputs or execution
-counts.
+## Differences from upstream
 
+**Bug fixes** (each with a regression test; a config flag restores the
+upstream value where the fix changes a reported number):
 
+- `figure_2_cell_functional.fix_bcell_uptake_denominator_bug` (default
+  `true`): the B-cell uptake-vs-OVA-transfection correlation
+  (`compute_bcell_uptake_vs_ova_correlation`) computed its uptake-percentage
+  denominator over every row with `cell_type == 'B'`, including the
+  synthetic `Tissue_average` row, inflating it. Set to `false` for the
+  upstream value.
+- `figure_2_spatial_neighborhood.robust_self_exclusion` (default `true`): the
+  source notebook excluded a cell from its own k-nearest-neighbour window by
+  positionally dropping the first returned neighbour column, assuming it is
+  always the self match; when two cells share exact coordinates this can
+  keep a duplicate-location neighbour and drop a true nearest neighbour. The
+  default instead matches the query's own index (as every other helper in
+  the same notebook already does) and excludes that. Set to `false` for the
+  upstream behaviour.
+- The full-barcode raw-image codebook's expected bit weight is corrected to
+  6 (the literal library string `100110100011` has six `1`s); the porting
+  notes for that notebook stated 5, and `BarcodeCodebook` validates its own
+  weight against the library at construction time, which is what caught this.
+
+**Intentional deviations**, documented rather than silently ported:
+
+- **Raw-image spot detection is a generic, configurable port, not five
+  near-duplicated notebooks.** The five raw-image notebooks share two
+  algorithms (LoG-candidate detection + Hamming-distance barcode decoding;
+  Cellpose/threshold nuclear segmentation), each with different marker
+  panels and thresholds; `nanostamp.spot_detection` implements each
+  algorithm once, parameterised by `config.yaml`. Per-run threshold
+  calibration (grid search over PBS/positive control fields), the tiled,
+  checkpointed processing the original notebooks needed for
+  hundred-gigabyte stacks, the optional CuPy GPU path, and the raw-intensity
+  "rescue" candidate pass are not ported: none of them change a decoded
+  barcode for a given threshold, and none are exercisable without the
+  excluded raw images. These rules are runnable only once a user supplies
+  real TIFFs; `pixi run smoke` exercises the same code path against a tiny
+  synthetic stack instead.
+- **Figure 2 spatial-neighbourhood Sections 8-11 are not ported.** The
+  source notebook continues past the neighbourhood clustering (ported in
+  full) into roughly fifteen near-identical paired-region distance/marker
+  analyses between LNP_08- and LNP_10-positive dendritic, CD8, CD4 and B
+  cells. Two shared, reusable functions are ported
+  (`collect_neighbor_pairs`, `paired_region_ttest`) so any of those
+  analyses can be run against them, but the ~30 individual output tables
+  are not each reproduced as a named function; see
+  `nanostamp.spatial_neighborhood`'s module docstring.
+- **Figure 2 cell/functional Sections 9-10 are not ported as library
+  functions.** Section 9 is a three-region spatial overlay figure and
+  Section 10 re-derives plot data from tables already computed in Sections
+  3-8; neither adds new computation.
+- Every `savefig`/`plt.show()` in the source notebooks is inert (confirmed:
+  no notebook actually writes a PDF/PNG despite several printing `"Saved:
+  ..."`); this port's rules do write real PDF/PNG figures where a figure is
+  produced, via `nanostamp.plotting.save_figure`.
+- Supplementary Figure 1c's Fiji tile-stitching step is out of scope: it
+  produces a visual QC preview only and both the real notebook and this port
+  run spot detection and segmentation on individual FOV tiles, not the
+  stitched image.
+
+## Licence
+
+Upstream (`HickeyLab/NanoSTAMP`) publishes no licence; this repository does
+not add one it is not entitled to grant. The ported code here has no licence
+grant beyond what upstream permits.
