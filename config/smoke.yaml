@@ -1,0 +1,106 @@
+# Smoke config: runs the whole DAG on a small synthetic fixture (see
+# workflow/scripts/make_smoke_fixture.py), in place of the real Duke-deposited
+# data and excluded raw TIFFs. `pixi run smoke` uses this config.
+
+data_root: results/smoke/data
+results_root: results/smoke/results
+smoke: true
+
+duke_repository:
+  record_url: "https://research.repository.duke.edu/record/554?ln=en"
+  top_level_folder: "For Repository"
+  manifest_file: config/data_manifest.yaml
+
+figure_1d_1e_spleen_lnp:
+  data_dir: "Figure_1d_1e_Spleen_LNP"
+  tile_size_px: 1500
+  min_cells_per_tile: 1
+  min_percent_for_named_cell_type: 5
+  region_labels:
+    reg000: "PBS"
+    reg001: "SM-102 LNP"
+
+figure_1f_1g_neighborhoods:
+  data_dir: "Figure_1f_1g_Spleen_Neighborhoods"
+  k_neighbors: 5
+  n_neighborhoods: 3
+  random_state: 0
+
+figure_2_cell_functional:
+  data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP"
+  reference_regions: ["S2_reg004"]
+  reference_gate_quantile: 0.95
+  siinfekl_gate_quantile: 0.9
+  fix_bcell_uptake_denominator_bug: true
+
+figure_2_spatial_neighborhood:
+  k_neighbors: 5
+  n_neighborhoods: 3
+  random_state: 0
+  elbow_cluster_values: [2, 3, 4]
+  elbow_max_cells: 1000
+  gate_reference_regions: ["S2_reg004"]
+  gate_quantile: 0.95
+  siinfekl_gate_quantile: 0.9
+  robust_self_exclusion: true
+
+raw_image_spot_detection:
+  full_barcode:
+    data_dir: "Figure_1d_1e_Spleen_LNP/Raw_Spot_Detection_Input"
+    log_sigma: 1.0
+    peak_width: 9
+    nms_min_distance: 5.0
+    min_on_snr: 1.0
+    min_snr_margin: 0.0
+    bright_snr_threshold: 1.75
+    max_bright_markers: 12
+    cell_assignment_radius_px: 25.0
+    threshold_peaks: 5.0
+  bit_1:
+    data_dir: "Figure_1d_1e_Spleen_LNP/Raw_Spot_Detection_Input"
+    log_sigma: 1.0
+    peak_width: 9
+    nms_min_distance: 5.0
+    min_on_snr: 1.0
+    min_snr_margin: 0.0
+    cell_assignment_radius_px: 20.0
+    threshold_peaks: 5.0
+  round_1:
+    data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Raw_Spot_Detection_Input/Round_1_S1_S2"
+    log_sigma: 1.0
+    peak_width: 9
+    nms_min_distance: 5.0
+    min_on_snr: 1.0
+    min_snr_margin: 0.0
+    bright_snr_threshold: 1.75
+    max_bright_markers: 12
+    cell_assignment_radius_px: 25.0
+    threshold_peaks: 5.0
+  round_2:
+    data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Raw_Spot_Detection_Input/Round_2_S3_S4"
+    log_sigma: 1.0
+    peak_width: 9
+    nms_min_distance: 5.0
+    min_on_snr: 1.0
+    min_snr_margin: 0.0
+    bright_snr_threshold: 1.75
+    max_bright_markers: 15
+    cell_assignment_radius_px: 25.0
+    threshold_peaks: 5.0
+  supplementary_figure_1c:
+    data_dir: "Supplementary_Figure_1c_2Oligo_RCA"
+    log_sigmas: [1.0, 2.0]
+    peak_width: 9
+    nms_min_distance: 5.0
+    threshold_peaks:
+      barcode1: 50
+      barcode2: 50
+    cellpose_diameter: 25
+    cellpose_min_area_px: 4
+    cellpose_max_area_px: 400
+    cellpose_gpu: false
+    use_cellpose: false
+    expand_mask_px: 5
+    min_spots_per_barcode: 1
+
+seed: 0

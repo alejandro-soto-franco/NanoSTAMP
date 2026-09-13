@@ -1,0 +1,52 @@
+"""NanoSTAMP reproducible workflow.
+
+Two independent parts, matching the upstream README's documented
+reproducibility scope:
+
+- Downstream figure analyses (Figure 1d/1e, 1f/1g, 2 and Supplementary
+  Figures 6-11) run from the Duke-deposited processed data under
+  ``data/<Figure>/Precomputed_*``. ``rule all`` builds these.
+- Raw-image spot-detection rules (Figures 1d/1e, 2, Supplementary Figure 1c)
+  are defined against the documented raw/registered TIFF layout but need
+  data this repository does not include; they are not part of ``rule all``
+  and instead fail with a clear message pointing at the README. ``rule
+  all_smoke`` additionally builds these, against the synthetic fixture
+  ``config/smoke.yaml`` generates.
+"""
+
+from pathlib import Path
+
+configfile: "config/config.yaml"
+
+DATA_ROOT = config["data_root"]
+RESULTS_ROOT = config["results_root"]
+
+
+def fixture_sentinel():
+    return [f"{DATA_ROOT}/.smoke_fixture"] if config.get("smoke", False) else []
+
+
+include: "rules/fetch.smk"
+include: "rules/spleen_lnp.smk"
+include: "rules/neighborhoods.smk"
+include: "rules/cell_functional.smk"
+include: "rules/spatial_neighborhood.smk"
+include: "rules/raw_image_spot_detection.smk"
+
+
+rule all:
+    input:
+        f"{RESULTS_ROOT}/manifest_report.txt",
+        f"{RESULTS_ROOT}/figure_1d_1e/tables",
+        f"{RESULTS_ROOT}/figure_1f_1g/tables",
+        f"{RESULTS_ROOT}/figure_2_cell_functional/tables",
+        f"{RESULTS_ROOT}/figure_2_spatial_neighborhood/tables",
+
+
+rule all_smoke:
+    input:
+        rules.all.input,
+        expand(f"{RESULTS_ROOT}/raw_image_spot_detection/{{family}}/tables", family=[
+            "full_barcode", "bit_1", "round_1", "round_2",
+        ]),
+        f"{RESULTS_ROOT}/supplementary_figure_1c/tables",

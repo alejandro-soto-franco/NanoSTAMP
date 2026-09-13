@@ -1,0 +1,19 @@
+# Manifest of files expected under `data/` once the Duke Research Data
+# Repository deposit (see config.yaml `duke_repository.record_url`) has been
+# downloaded and placed per the README.
+#
+# This list is empty because the record's dynamic pages sit behind an AWS
+# WAF bot challenge (HTTP 202 with `x-amzn-waf-action: challenge`) that
+# blocks headless HTTP clients, including this workflow's own tooling, in
+# this environment; only a human with a real browser can complete the
+# download. After downloading, populate this file with one entry per file:
+#
+#   files:
+#     - path: Figure_1d_1e_Spleen_LNP/Precomputed_Analysis_Input/codebook_cell_calls_spleen.csv.gz
+#       size_bytes: 123456
+#       sha256: <64 lowercase hex characters, from `sha256sum <file>`>
+#
+# `pixi run verify_manifest` (see workflow/rules/fetch.smk) checks every
+# entry's size and digest and scans the repository for hardcoded local paths.
+
+files: []

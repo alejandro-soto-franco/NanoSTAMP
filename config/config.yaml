@@ -1,0 +1,136 @@
+# NanoSTAMP workflow configuration.
+#
+# Every path here is relative to the repository root. `data_root` and
+# `results_root` point at the gitignored `data/` and `results/` symlinks
+# (see README "Local directory structure").
+
+data_root: data
+results_root: results
+smoke: false
+
+# Duke Research Data Repository deposit (see README "Data sources"). The
+# record's dynamic pages sit behind an AWS WAF challenge that blocks
+# headless HTTP clients (curl, and this workflow's own fetch script), so
+# `pixi run all` cannot download it unattended in this environment; a human
+# must download `For Repository` from the URL below through a browser, and
+# rename/place it as `data/` per the README before `pixi run all` can use it.
+duke_repository:
+  record_url: "https://research.repository.duke.edu/record/554?ln=en"
+  top_level_folder: "For Repository"
+  manifest_file: config/data_manifest.yaml
+
+# Figure 1d/1e: spleen LNP spatial-tile calls and cell-type composition.
+figure_1d_1e_spleen_lnp:
+  data_dir: "Figure_1d_1e_Spleen_LNP"
+  tile_size_px: 1500
+  min_cells_per_tile: 500
+  min_percent_for_named_cell_type: 5
+  region_labels:
+    reg000: "PBS"
+    reg001: "SM-102 LNP"
+
+# Figure 1f/1g: SM-102 LNP-treated spleen spatial neighbourhoods.
+figure_1f_1g_neighborhoods:
+  data_dir: "Figure_1f_1g_Spleen_Neighborhoods"
+  k_neighbors: 10
+  n_neighborhoods: 8
+  random_state: 0
+
+# Figure 2 / Supplementary Figures 6-8: multiplex LNP cell and functional analysis.
+figure_2_cell_functional:
+  data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP"
+  reference_regions: ["S2_reg004"]
+  reference_gate_quantile: 0.95
+  siinfekl_gate_quantile: 0.9
+  # The source notebook computes this correlation's uptake-percentage
+  # denominator over every row with cell_type == 'B', including the
+  # synthetic Tissue_average row, inflating it (see README "Differences from
+  # upstream"). true = fixed denominator (default); false = upstream value.
+  fix_bcell_uptake_denominator_bug: true
+
+# Figure 2 / Supplementary Figures 9-11: multiplex LNP spatial neighbourhood analysis.
+figure_2_spatial_neighborhood:
+  k_neighbors: 10
+  n_neighborhoods: 12
+  random_state: 0
+  elbow_cluster_values: [5, 8, 10, 12, 15, 20, 25, 30]
+  elbow_max_cells: 250000
+  gate_reference_regions: ["S2_reg004"]
+  gate_quantile: 0.95
+  siinfekl_gate_quantile: 0.9
+  # The source notebook excludes the index cell from its own k-nearest-cell
+  # window by positionally dropping the first neighbour column, which can
+  # silently misbehave when two cells share exact coordinates (see README
+  # "Differences from upstream"). true = robust index-matched exclusion
+  # (default, used uniformly); false = upstream positional-drop behaviour.
+  robust_self_exclusion: true
+
+# Raw-image spot detection (Figures 1d/1e, 2, Supplementary Figure 1c). These
+# rules are defined against the documented raw-data layout but only runnable
+# when a user supplies the excluded raw/registered TIFF stacks under
+# data/<Figure>/Raw_Spot_Detection_Input or Raw_Images (see README "Notebooks").
+raw_image_spot_detection:
+  full_barcode:
+    data_dir: "Figure_1d_1e_Spleen_LNP"
+    log_sigma: 1.0
+    peak_width: 21
+    nms_min_distance: 9.0
+    min_on_snr: 1.2
+    min_snr_margin: 0.05
+    bright_snr_threshold: 1.75
+    max_bright_markers: 9
+    cell_assignment_radius_px: 25.0
+  bit_1:
+    data_dir: "Figure_1d_1e_Spleen_LNP"
+    log_sigma: 1.0
+    peak_width: 21
+    nms_min_distance: 9.0
+    min_on_snr: 1.2
+    min_snr_margin: 0.05
+    cell_assignment_radius_px: 20.0
+  round_1:
+    data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Round_1_S1_S2"
+    log_sigma: 2.0
+    peak_width: 3
+    nms_min_distance: 0.8
+    min_on_snr: 1.2
+    min_snr_margin: 0.1
+    bright_snr_threshold: 1.75
+    max_bright_markers: 12
+    cell_assignment_radius_px: 25.0
+  round_2:
+    data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Round_2_S3_S4"
+    log_sigma: 2.0
+    peak_width: 3
+    nms_min_distance: 0.8
+    min_on_snr: 0.8
+    min_snr_margin: 0.02
+    bright_snr_threshold: 1.75
+    max_bright_markers: 10
+    cell_assignment_radius_px: 25.0
+    per_marker_thresholds:
+      A6: 1.6
+      A17: 0.8
+      A72: 1.3
+      A63: 1.3
+      A55: 2.0
+      A76: 3.0
+      A79: 3.0
+      A20: 2.8
+  supplementary_figure_1c:
+    data_dir: "Supplementary_Figure_1c_2Oligo_RCA"
+    log_sigmas: [1.0, 2.0, 3.0, 4.0]
+    peak_width: 11
+    nms_min_distance: 5.0
+    threshold_peaks:
+      barcode1: 1000
+      barcode2: 2000
+    cellpose_diameter: 25
+    cellpose_min_area_px: 100
+    cellpose_max_area_px: 5000
+    cellpose_gpu: false
+    use_cellpose: true
+    expand_mask_px: 10
+    min_spots_per_barcode: 1
+
+seed: 0
