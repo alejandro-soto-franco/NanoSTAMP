@@ -70,26 +70,39 @@ figure_2_spatial_neighborhood:
 # when a user supplies the excluded raw/registered TIFF stacks under
 # data/<Figure>/Raw_Spot_Detection_Input or Raw_Images (see README "Notebooks").
 raw_image_spot_detection:
+  # full_barcode and bit_1 calibrate their thresholds from the reg000
+  # (negative) / reg001 (positive) region pair (Section 4 of both
+  # notebooks); calibration_candidate_* lists the grid the calibration
+  # functions search over.
   full_barcode:
-    data_dir: "Figure_1d_1e_Spleen_LNP"
+    data_dir: "Figure_1d_1e_Spleen_LNP/Raw_Spot_Detection_Input"
     log_sigma: 1.0
     peak_width: 21
     nms_min_distance: 9.0
-    min_on_snr: 1.2
     min_snr_margin: 0.05
     bright_snr_threshold: 1.75
     max_bright_markers: 9
     cell_assignment_radius_px: 25.0
+    calibration_candidate_thresholds: [50.0, 100.0, 200.0, 300.0, 500.0]
+    calibration_candidate_min_on_snr: [0.8, 1.0, 1.2, 1.5, 2.0]
+    max_neg_matches_per_mpx: 3.0
+    min_pos_matches_per_mpx: 0.5
   bit_1:
-    data_dir: "Figure_1d_1e_Spleen_LNP"
+    data_dir: "Figure_1d_1e_Spleen_LNP/Raw_Spot_Detection_Input"
     log_sigma: 1.0
     peak_width: 21
     nms_min_distance: 9.0
-    min_on_snr: 1.2
     min_snr_margin: 0.05
     cell_assignment_radius_px: 20.0
+    calibration_candidate_thresholds: [50.0, 100.0, 200.0, 300.0, 500.0]
+    calibration_candidate_min_on_snr: [0.8, 1.0, 1.2, 1.5, 2.0]
+    max_neg_matches_per_mpx: 5.0
+    min_pos_matches_per_mpx: 0.5
+  # round_1 and round_2 use fixed manual parameters (never recalibrated per
+  # run) plus tiled, checkpointed, rescue-assisted detection, matching their
+  # hundred-gigabyte real stacks.
   round_1:
-    data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Round_1_S1_S2"
+    data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Raw_Spot_Detection_Input/Round_1_S1_S2"
     log_sigma: 2.0
     peak_width: 3
     nms_min_distance: 0.8
@@ -98,8 +111,15 @@ raw_image_spot_detection:
     bright_snr_threshold: 1.75
     max_bright_markers: 12
     cell_assignment_radius_px: 25.0
+    threshold_peaks: 2.5
+    n_tiles: 10
+    tile_overlap: 128
+    rescue_bright_percentile: 98.0
+    rescue_object_percentile: 99.0
+    rescue_object_min_area: 4
+    rescue_object_max_area: 400
   round_2:
-    data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Round_2_S3_S4"
+    data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Raw_Spot_Detection_Input/Round_2_S3_S4"
     log_sigma: 2.0
     peak_width: 3
     nms_min_distance: 0.8
@@ -108,6 +128,13 @@ raw_image_spot_detection:
     bright_snr_threshold: 1.75
     max_bright_markers: 10
     cell_assignment_radius_px: 25.0
+    threshold_peaks: 1.8
+    n_tiles: 10
+    tile_overlap: 128
+    rescue_bright_percentile: 98.0
+    rescue_object_percentile: 99.0
+    rescue_object_min_area: 4
+    rescue_object_max_area: 400
     per_marker_thresholds:
       A6: 1.6
       A17: 0.8

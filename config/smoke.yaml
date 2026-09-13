@@ -50,21 +50,25 @@ raw_image_spot_detection:
     log_sigma: 1.0
     peak_width: 9
     nms_min_distance: 5.0
-    min_on_snr: 1.0
     min_snr_margin: 0.0
     bright_snr_threshold: 1.75
     max_bright_markers: 12
     cell_assignment_radius_px: 25.0
-    threshold_peaks: 5.0
+    calibration_candidate_thresholds: [1.0, 5.0, 20.0]
+    calibration_candidate_min_on_snr: [0.2, 0.5, 1.0]
+    max_neg_matches_per_mpx: 200.0
+    min_pos_matches_per_mpx: 0.01
   bit_1:
     data_dir: "Figure_1d_1e_Spleen_LNP/Raw_Spot_Detection_Input"
     log_sigma: 1.0
     peak_width: 9
     nms_min_distance: 5.0
-    min_on_snr: 1.0
     min_snr_margin: 0.0
     cell_assignment_radius_px: 20.0
-    threshold_peaks: 5.0
+    calibration_candidate_thresholds: [1.0, 5.0, 20.0]
+    calibration_candidate_min_on_snr: [0.2, 0.5, 1.0]
+    max_neg_matches_per_mpx: 200.0
+    min_pos_matches_per_mpx: 0.01
   round_1:
     data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Raw_Spot_Detection_Input/Round_1_S1_S2"
     log_sigma: 1.0
@@ -76,6 +80,12 @@ raw_image_spot_detection:
     max_bright_markers: 12
     cell_assignment_radius_px: 25.0
     threshold_peaks: 5.0
+    n_tiles: 4
+    tile_overlap: 10
+    rescue_bright_percentile: 99.0
+    rescue_object_percentile: 98.0
+    rescue_object_min_area: 4
+    rescue_object_max_area: 100
   round_2:
     data_dir: "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Raw_Spot_Detection_Input/Round_2_S3_S4"
     log_sigma: 1.0
@@ -87,6 +97,12 @@ raw_image_spot_detection:
     max_bright_markers: 15
     cell_assignment_radius_px: 25.0
     threshold_peaks: 5.0
+    n_tiles: 4
+    tile_overlap: 10
+    rescue_bright_percentile: 99.0
+    rescue_object_percentile: 98.0
+    rescue_object_min_area: 4
+    rescue_object_max_area: 100
   supplementary_figure_1c:
     data_dir: "Supplementary_Figure_1c_2Oligo_RCA"
     log_sigmas: [1.0, 2.0]

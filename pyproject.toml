@@ -55,6 +55,7 @@ default = { features = [ "test", "lint" ], solve-group = "main" }
 smoke = "snakemake -s workflow/Snakefile --configfile config/smoke.yaml --cores 6 -p all_smoke"
 all = "snakemake -s workflow/Snakefile --configfile config/config.yaml --cores 6 -p"
 dag = "snakemake -s workflow/Snakefile --configfile config/config.yaml --dag | dot -Tsvg > results/dag.svg"
+manifest-from-data = "python workflow/scripts/build_data_manifest.py"
 
 [tool.pixi.feature.test.tasks]
 test = "pytest tests -q"

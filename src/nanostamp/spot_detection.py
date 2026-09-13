@@ -23,17 +23,21 @@ per-notebook implementations:
    schema documented in the porting spec (``region, cell, x, y, barcode,
    lnp_call, lnp_positive, barcode_match_status, ...``).
 
-Scope note: the source notebooks additionally implement per-run threshold
-calibration (grid search over PBS/positive control fields), y-axis tiling
-with resumable per-tile checkpoints (needed only because the real registered
-stacks are hundreds of gigabytes), an optional CuPy GPU fast path for the
-Laplacian-of-Gaussian filter, and a raw-intensity "rescue" candidate pass.
-None of that machinery changes the final decoded barcode for a given
-detection threshold, and none of it is exercisable without the excluded raw
-images, so it is not ported; the Snakemake rules that would use it are
-defined against the documented raw-data layout and raise a clear error until
-a user supplies real TIFFs (see ``workflow/rules/raw_image_spot_detection.smk``).
-Supplementary Figure 1c's Cellpose nuclear segmentation
+5. :func:`calibrate_marker_threshold` and :func:`calibrate_decode_threshold` -
+   the per-marker LoG-threshold and global decode-threshold grid searches
+   (Section 4 of the raw-image notebooks), against matched negative/positive
+   calibration fields.
+6. :func:`detect_log_candidates_tiled` - y-axis tiling with resumable
+   per-tile CSV checkpoints, needed because the real registered stacks are
+   hundreds of gigabytes.
+7. :func:`raw_intensity_rescue_candidates` - the raw-intensity "rescue" pass
+   (bright-point and blob-shaped candidates from a channel-max projection).
+
+Scope note: the source notebooks' optional CuPy GPU fast path for the
+Laplacian-of-Gaussian filter is not ported; every function here runs on CPU
+only (the target environment has no GPU access for this repository), which
+the calibration and tiling functions above do not change the numerical
+behaviour of, only the runtime. Supplementary Figure 1c's Cellpose nuclear segmentation
 (:func:`segment_nuclei_cellpose`) and barcode-presence classification
 (:func:`classify_cells_by_barcode_presence`) are ported in full, since they
 run identically whether the input is real or synthetic.
@@ -42,6 +46,7 @@ run identically whether the input is real or synthetic.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -162,12 +167,8 @@ def detect_log_candidates(
     """
     candidates = []
     for marker, image in channel_images.items():
-        log_image = -ndimage.gaussian_laplace(image.astype(np.float64), sigma=log_sigma)
-        local_max = ndimage.maximum_filter(log_image, size=peak_width) == log_image
-        above_threshold = log_image > thresholds.get(marker, 0.0)
-        mask = local_max & above_threshold
-        if tissue_mask is not None:
-            mask &= tissue_mask
+        log_image = _log_score_image(image, log_sigma)
+        mask = _local_maxima_mask(log_image, peak_width, thresholds.get(marker, 0.0), tissue_mask)
         ys, xs = np.nonzero(mask)
         for y, x in zip(ys, xs, strict=True):
             candidates.append(
@@ -177,7 +178,35 @@ def detect_log_candidates(
     if not candidates:
         return pd.DataFrame(columns=["i", "j", "score", "seed_marker"])
 
-    table = pd.DataFrame(candidates).sort_values("score", ascending=False).reset_index(drop=True)
+    table = pd.DataFrame(candidates)
+    return _greedy_nms(table, nms_min_distance)
+
+
+def _log_score_image(image: np.ndarray, log_sigma: float) -> np.ndarray:
+    """Laplacian-of-Gaussian score image (higher = brighter puncta)."""
+    return -ndimage.gaussian_laplace(image.astype(np.float64), sigma=log_sigma)
+
+
+def _local_maxima_mask(
+    score_image: np.ndarray,
+    peak_width: int,
+    threshold: float,
+    tissue_mask: np.ndarray | None = None,
+) -> np.ndarray:
+    """Boolean mask of local maxima above ``threshold`` (optionally restricted to ``tissue_mask``)."""
+    local_max = ndimage.maximum_filter(score_image, size=peak_width) == score_image
+    mask = local_max & (score_image > threshold)
+    if tissue_mask is not None:
+        mask &= tissue_mask
+    return mask
+
+
+def _greedy_nms(table: pd.DataFrame, nms_min_distance: float) -> pd.DataFrame:
+    """Greedy non-max suppression: keep candidates in descending score order, dropping any
+    within ``nms_min_distance`` pixels of an already-kept candidate."""
+    if table.empty:
+        return table.reset_index(drop=True)
+    table = table.sort_values("score", ascending=False).reset_index(drop=True)
     kept_positions: list[tuple[int, int]] = []
     keep_mask = np.zeros(len(table), dtype=bool)
     for idx, row in table.iterrows():
@@ -192,6 +221,331 @@ def detect_log_candidates(
         keep_mask[idx] = True
         kept_positions.append(position)
     return table.loc[keep_mask].reset_index(drop=True)
+
+
+def _matches_per_megapixel(
+    images: list[np.ndarray], log_sigma: float, peak_width: int, threshold: float
+) -> float:
+    """Local maxima above ``threshold``, summed over ``images`` and normalised per megapixel."""
+    total_matches = 0
+    total_pixels = 0
+    for image in images:
+        score_image = _log_score_image(image, log_sigma)
+        mask = _local_maxima_mask(score_image, peak_width, threshold)
+        total_matches += int(mask.sum())
+        total_pixels += image.size
+    megapixels = total_pixels / 1_000_000
+    return total_matches / megapixels if megapixels > 0 else 0.0
+
+
+def calibrate_marker_threshold(
+    negative_images: list[np.ndarray],
+    positive_images: list[np.ndarray],
+    candidate_thresholds: list[float],
+    log_sigma: float = 1.0,
+    peak_width: int = 21,
+    max_neg_matches_per_mpx: float = 3.0,
+    min_pos_matches_per_mpx: float = 0.5,
+    policy_bonus: float = 1000.0,
+) -> tuple[float, pd.DataFrame]:
+    """Grid-search a per-marker LoG threshold from matched negative/positive calibration fields.
+
+    Ports the per-marker threshold calibration performed in Section 4 of the
+    raw-image notebooks (a per-candidate-threshold grid search maximising an
+    enrichment/pass-rate score), generalised to any marker rather than
+    hardcoded per notebook.
+
+    Parameters
+    ----------
+    negative_images, positive_images
+        Small calibration fields (e.g. random tissue-containing crops) from
+        a negative-control region and a positive region, for one marker
+        channel.
+    candidate_thresholds
+        LoG-score thresholds to evaluate.
+    log_sigma, peak_width
+        LoG filter parameters (must match the parameters used downstream).
+    max_neg_matches_per_mpx
+        Policy ceiling on negative-field match density.
+    min_pos_matches_per_mpx
+        Policy floor on positive-field match density.
+    policy_bonus
+        Added to a candidate's score when it satisfies both policy bounds,
+        so a policy-satisfying threshold is always preferred over one that
+        merely has a higher raw enrichment.
+
+    Returns
+    -------
+    ``(selected_threshold, results)``: the threshold with the highest score
+    (ties broken by the lowest threshold), and the full per-candidate table
+    with columns ``threshold, neg_matches_per_mpx, pos_matches_per_mpx,
+    enrichment, passes_policy, selection_score``.
+    """
+    rows = []
+    for threshold in candidate_thresholds:
+        neg_rate = _matches_per_megapixel(negative_images, log_sigma, peak_width, threshold)
+        pos_rate = _matches_per_megapixel(positive_images, log_sigma, peak_width, threshold)
+        enrichment = (
+            pos_rate / neg_rate if neg_rate > 0 else (float("inf") if pos_rate > 0 else 0.0)
+        )
+        passes_policy = neg_rate <= max_neg_matches_per_mpx and pos_rate >= min_pos_matches_per_mpx
+        finite_enrichment = enrichment if np.isfinite(enrichment) else 0.0
+        selection_score = finite_enrichment + (policy_bonus if passes_policy else 0.0)
+        rows.append(
+            {
+                "threshold": threshold,
+                "neg_matches_per_mpx": neg_rate,
+                "pos_matches_per_mpx": pos_rate,
+                "enrichment": enrichment,
+                "passes_policy": passes_policy,
+                "selection_score": selection_score,
+            }
+        )
+    results = pd.DataFrame(rows)
+    best = results.sort_values(["selection_score", "threshold"], ascending=[False, True]).iloc[0]
+    return float(best["threshold"]), results
+
+
+def calibrate_decode_threshold(
+    negative_decoded: pd.DataFrame,
+    positive_decoded: pd.DataFrame,
+    candidate_min_on_snr: list[float],
+    negative_megapixels: float,
+    positive_megapixels: float,
+    max_neg_matches_per_mpx: float = 3.0,
+    min_pos_matches_per_mpx: float = 0.5,
+    policy_bonus: float = 1000.0,
+) -> tuple[float, pd.DataFrame]:
+    """Grid-search the global ``min_on_snr`` decode threshold from calibration-field decodes.
+
+    Ports Section 4's global decode-threshold calibration: candidates from
+    :func:`decode_candidates` (run once at a very low ``min_on_snr`` over the
+    calibration fields) are re-filtered at each candidate threshold, scored
+    the same way as :func:`calibrate_marker_threshold`.
+
+    Parameters
+    ----------
+    negative_decoded, positive_decoded
+        Output of :func:`decode_candidates` for the negative and positive
+        calibration fields, with a ``min_on_snr`` column per candidate.
+    candidate_min_on_snr
+        Threshold values to evaluate.
+    negative_megapixels, positive_megapixels
+        Total imaged area of each field set, for density normalisation.
+    max_neg_matches_per_mpx, min_pos_matches_per_mpx, policy_bonus
+        As in :func:`calibrate_marker_threshold`.
+
+    Returns
+    -------
+    ``(selected_min_on_snr, results)``.
+    """
+    rows = []
+    for threshold in candidate_min_on_snr:
+        neg_count = int(
+            (
+                (negative_decoded["min_on_snr"] >= threshold)
+                & negative_decoded["barcode_match_status"].isin(["exact", "tolerant"])
+            ).sum()
+        )
+        pos_count = int(
+            (
+                (positive_decoded["min_on_snr"] >= threshold)
+                & positive_decoded["barcode_match_status"].isin(["exact", "tolerant"])
+            ).sum()
+        )
+        neg_rate = neg_count / negative_megapixels if negative_megapixels > 0 else 0.0
+        pos_rate = pos_count / positive_megapixels if positive_megapixels > 0 else 0.0
+        enrichment = (
+            pos_rate / neg_rate if neg_rate > 0 else (float("inf") if pos_rate > 0 else 0.0)
+        )
+        passes_policy = neg_rate <= max_neg_matches_per_mpx and pos_rate >= min_pos_matches_per_mpx
+        finite_enrichment = enrichment if np.isfinite(enrichment) else 0.0
+        selection_score = finite_enrichment + (policy_bonus if passes_policy else 0.0)
+        rows.append(
+            {
+                "min_on_snr": threshold,
+                "neg_matches_per_mpx": neg_rate,
+                "pos_matches_per_mpx": pos_rate,
+                "enrichment": enrichment,
+                "passes_policy": passes_policy,
+                "selection_score": selection_score,
+            }
+        )
+    results = pd.DataFrame(rows)
+    best = results.sort_values(["selection_score", "min_on_snr"], ascending=[False, True]).iloc[0]
+    return float(best["min_on_snr"]), results
+
+
+def raw_intensity_rescue_candidates(
+    channel_images: dict[str, np.ndarray],
+    bright_percentile: float = 98.0,
+    object_percentile: float = 99.0,
+    object_min_area: int = 4,
+    object_max_area: int = 400,
+    peak_width: int = 3,
+) -> pd.DataFrame:
+    """Recover bright-point and blob-shaped candidates from a raw channel-max projection.
+
+    Ports the raw-intensity "rescue" pass (Round 1/2 notebooks): a
+    percentile-threshold local-maximum pass over the per-pixel maximum
+    across channels, and a percentile-threshold connected-component pass
+    within an area window, catching bright or blob-shaped candidates the
+    LoG bank might miss. Merge the result with LoG candidates via
+    :func:`detect_log_candidates` and :func:`_greedy_nms` (see
+    ``workflow/scripts/run_raw_image_spot_detection.py``).
+
+    Parameters
+    ----------
+    channel_images
+        ``{marker_name: 2D image}``; the per-pixel maximum across all of
+        them is the "raw rescue" image.
+    bright_percentile
+        Percentile threshold for the bright-point pass.
+    object_percentile
+        Percentile threshold for the connected-component pass.
+    object_min_area, object_max_area
+        Connected-component area window (pixels).
+    peak_width
+        Local-maximum-filter footprint for the bright-point pass.
+
+    Returns
+    -------
+    One row per rescued candidate: ``i, j, score, seed_marker``
+    (``"rescue_bright"`` or ``"rescue_object"``).
+    """
+    stacked = np.stack(list(channel_images.values()), axis=0)
+    raw_max = stacked.max(axis=0).astype(np.float64)
+
+    bright_threshold = float(np.percentile(raw_max, bright_percentile))
+    bright_mask = _local_maxima_mask(raw_max, peak_width, bright_threshold)
+    ys, xs = np.nonzero(bright_mask)
+    bright_rows = [
+        {"i": int(y), "j": int(x), "score": float(raw_max[y, x]), "seed_marker": "rescue_bright"}
+        for y, x in zip(ys, xs, strict=True)
+    ]
+
+    object_threshold = float(np.percentile(raw_max, object_percentile))
+    labels, n_labels = ndimage.label(raw_max > object_threshold)
+    object_rows = []
+    if n_labels:
+        areas = ndimage.sum(np.ones_like(labels), labels, index=np.arange(1, n_labels + 1))
+        centroids = ndimage.center_of_mass(raw_max, labels, index=np.arange(1, n_labels + 1))
+        for area, centroid in zip(areas, centroids, strict=True):
+            if not (object_min_area <= area <= object_max_area):
+                continue
+            y, x = centroid
+            object_rows.append(
+                {
+                    "i": int(round(y)),
+                    "j": int(round(x)),
+                    "score": float(raw_max[int(round(y)), int(round(x))]),
+                    "seed_marker": "rescue_object",
+                }
+            )
+
+    rows = bright_rows + object_rows
+    if not rows:
+        return pd.DataFrame(columns=["i", "j", "score", "seed_marker"])
+    return pd.DataFrame(rows)
+
+
+def detect_log_candidates_tiled(
+    channel_images: dict[str, np.ndarray],
+    thresholds: dict[str, float],
+    n_tiles: int,
+    tile_overlap: int,
+    checkpoint_dir: Path,
+    region_name: str,
+    log_sigma: float = 1.0,
+    peak_width: int = 21,
+    nms_min_distance: float = 9.0,
+    use_raw_rescue: bool = False,
+    rescue_kwargs: dict | None = None,
+    force_rerun: bool = False,
+) -> pd.DataFrame:
+    """Tiled, checkpointed candidate detection over a large image, resumable per tile.
+
+    Ports the y-axis tiling and per-tile CSV checkpointing the Round 1/2
+    notebooks use because their registered stacks are hundreds of gigabytes:
+    splits ``channel_images`` into ``n_tiles`` overlapping horizontal bands,
+    runs :func:`detect_log_candidates` (optionally merged with
+    :func:`raw_intensity_rescue_candidates`) on each tile independently,
+    keeps only candidates in the tile's non-overlapping "core" rows (so
+    overlap regions are not double-counted), and writes/reads one checkpoint
+    CSV per tile so a killed run resumes without recomputation.
+
+    Parameters
+    ----------
+    channel_images
+        ``{marker_name: full-size 2D image}``.
+    thresholds
+        Per-marker LoG-score threshold.
+    n_tiles
+        Number of y-axis tiles to split the image into.
+    tile_overlap
+        Rows of overlap on each side of a tile's core band.
+    checkpoint_dir
+        Directory for per-tile checkpoint CSVs (created if absent).
+    region_name
+        Used to name checkpoint files (``spots_all_candidates_<region>_tile<NNN>.csv``).
+    log_sigma, peak_width, nms_min_distance
+        As in :func:`detect_log_candidates`.
+    use_raw_rescue
+        Also merge in :func:`raw_intensity_rescue_candidates` per tile.
+    rescue_kwargs
+        Extra keyword arguments forwarded to
+        :func:`raw_intensity_rescue_candidates`.
+    force_rerun
+        Recompute every tile even if a checkpoint exists.
+
+    Returns
+    -------
+    All tiles' kept candidates, with coordinates already in full-image space.
+    """
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    height = next(iter(channel_images.values())).shape[0]
+    tile_height = height // n_tiles
+    tile_frames = []
+
+    for tile_index in range(n_tiles):
+        checkpoint_path = (
+            checkpoint_dir / f"spots_all_candidates_{region_name}_tile{tile_index:03d}.csv"
+        )
+        if checkpoint_path.exists() and not force_rerun:
+            tile_frames.append(pd.read_csv(checkpoint_path))
+            continue
+
+        core_start = tile_index * tile_height
+        core_end = height if tile_index == n_tiles - 1 else core_start + tile_height
+        read_start = max(0, core_start - tile_overlap)
+        read_end = min(height, core_end + tile_overlap)
+
+        tile_images = {
+            marker: image[read_start:read_end, :] for marker, image in channel_images.items()
+        }
+        candidates = detect_log_candidates(
+            tile_images,
+            thresholds,
+            log_sigma=log_sigma,
+            peak_width=peak_width,
+            nms_min_distance=nms_min_distance,
+        )
+        if use_raw_rescue:
+            rescue = raw_intensity_rescue_candidates(tile_images, **(rescue_kwargs or {}))
+            candidates = _greedy_nms(
+                pd.concat([candidates, rescue], ignore_index=True), nms_min_distance
+            )
+
+        candidates["i"] = candidates["i"] + read_start
+        core_mask = (candidates["i"] >= core_start) & (candidates["i"] < core_end)
+        tile_result = candidates.loc[core_mask].reset_index(drop=True)
+        tile_result.to_csv(checkpoint_path, index=False)
+        tile_frames.append(tile_result)
+
+    non_empty = [frame for frame in tile_frames if not frame.empty]
+    if not non_empty:
+        return pd.DataFrame(columns=["i", "j", "score", "seed_marker"])
+    return pd.concat(non_empty, ignore_index=True)
 
 
 def _local_snr(

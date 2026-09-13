@@ -225,92 +225,83 @@ def make_figure_2_fixture(data_root: Path, n_per_region: int = 25) -> None:
         summary.to_csv(out_dir / "cell_analysis_summary_by_lnp_call_v4.csv", index=False)
 
 
-def make_raw_image_fixture(data_root: Path, shape: tuple[int, int] = (96, 96)) -> None:
-    """One tiny registered TIFF stack + features CSV + marker list per raw-image family."""
-    families = {
-        "Figure_1d_1e_Spleen_LNP/Raw_Spot_Detection_Input": {
-            "markers": [
-                "A6",
-                "A17",
-                "A55",
-                "A56",
-                "A76",
-                "A79",
-                "A20",
-                "A46",
-                "A28",
-                "A72",
-                "A2",
-                "A63",
-            ],
-            "samples": ["registered1"],
-            "region": "reg000",
-        },
-        "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Raw_Spot_Detection_Input/Round_1_S1_S2": {
-            "markers": [
-                "A6",
-                "A17",
-                "A55",
-                "A56",
-                "A76",
-                "A79",
-                "A20",
-                "A46",
-                "A28",
-                "A72",
-                "A2",
-                "A63",
-            ],
-            "samples": ["registered_S1_reg000"],
-            "region": "S1_reg000",
-        },
-        "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Raw_Spot_Detection_Input/Round_2_S3_S4": {
-            "markers": [
-                "A6",
-                "A17",
-                "A55",
-                "A56",
-                "A76",
-                "A79",
-                "A20",
-                "A46",
-                "A28",
-                "A72",
-                "A2",
-                "A63",
-                "A126",
-                "A127",
-                "A128",
-            ],
-            "samples": ["registered_S3_reg000"],
-            "region": "S3_reg000",
-        },
-    }
-    for relative_dir, info in families.items():
+_12_MARKERS = ["A6", "A17", "A55", "A56", "A76", "A79", "A20", "A46", "A28", "A72", "A2", "A63"]
+_15_MARKERS = [*_12_MARKERS, "A126", "A127", "A128"]
+
+
+def _write_stack(
+    out_dir: Path,
+    sample: str,
+    region: str,
+    markers: list[str],
+    shape: tuple[int, int],
+    spot_ijs: list[tuple[int, int]],
+) -> None:
+    n_channels = len(markers)
+    stack = RNG.normal(20, 3, size=(n_channels, *shape)).clip(0).astype(np.uint16)
+    for i, j in spot_ijs:
+        stack[:, i, j] = 800
+    tifffile.imwrite(out_dir / f"{sample}_integrated_registered_overlap_crop.tif", stack)
+    (out_dir / f"{sample}_integrated_MarkerList.txt").write_text("\n".join(markers) + "\n")
+    # `region` records which features CSV this sample's spots assign
+    # against; the real notebooks track this via an explicit REGIONS list,
+    # which this fixture mirrors instead of guessing from filenames.
+    (out_dir / f"{sample}_registration_summary.json").write_text(
+        json.dumps({"integrated_shape": [n_channels, *shape], "region": region})
+    )
+
+
+def _write_features(
+    out_dir: Path, region: str, shape: tuple[int, int], spot_ijs: list[tuple[int, int]]
+) -> None:
+    # One cell centroid near each spot (so spots have somewhere to be
+    # assigned) plus a couple of filler cells.
+    ys = [i for i, _ in spot_ijs] + [shape[0] // 4, 3 * shape[0] // 4]
+    xs = [j for _, j in spot_ijs] + [shape[1] // 4, 3 * shape[1] // 4]
+    features = pd.DataFrame({"label": range(1, len(ys) + 1), "y": ys, "x": xs})
+    features.to_csv(out_dir / f"{region}_features.csv", index=False)
+
+
+def make_raw_image_fixture(data_root: Path) -> None:
+    """Registered TIFF stacks + features CSVs + marker lists per raw-image family.
+
+    Full_barcode and Bit_1 get a negative (reg000/registered1, no spots) and
+    a positive (reg001/registered2, several bright spots) region, matching
+    the upstream calibration layout. Round_1/Round_2 get one larger, tiled
+    region with spots spread across tile boundaries, so
+    ``detect_log_candidates_tiled`` and the raw-intensity rescue pass have
+    something real to exercise.
+    """
+    small_shape = (96, 96)
+    positive_spots = [(48, 48), (20, 70), (70, 20)]
+
+    fig1_dir = data_root / "Figure_1d_1e_Spleen_LNP" / "Raw_Spot_Detection_Input"
+    fig1_dir.mkdir(parents=True, exist_ok=True)
+    _write_stack(fig1_dir, "registered1", "reg000", _12_MARKERS, small_shape, [])
+    _write_stack(fig1_dir, "registered2", "reg001", _12_MARKERS, small_shape, positive_spots)
+    _write_features(fig1_dir, "reg000", small_shape, [])
+    _write_features(fig1_dir, "reg001", small_shape, positive_spots)
+
+    tiled_shape = (200, 80)
+    tiled_spots = [(15, 40), (60, 40), (105, 40), (150, 40), (185, 40)]
+    for relative_dir, sample, region, markers in [
+        (
+            "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Raw_Spot_Detection_Input/Round_1_S1_S2",
+            "registered_S1_reg000",
+            "S1_reg000",
+            _12_MARKERS,
+        ),
+        (
+            "Figure_2_and_Supplementary_Figures_6_11_Multiplex_LNP/Raw_Spot_Detection_Input/Round_2_S3_S4",
+            "registered_S3_reg000",
+            "S3_reg000",
+            _15_MARKERS,
+        ),
+    ]:
         out_dir = data_root / relative_dir
         out_dir.mkdir(parents=True, exist_ok=True)
-        n_channels = len(info["markers"])
-        for sample in info["samples"]:
-            stack = RNG.normal(20, 3, size=(n_channels, *shape)).clip(0).astype(np.uint16)
-            # Bright the pixel in every channel, not just the first few, so
-            # every codebook's marker subset (bit_1 needs only A20, at index
-            # 6) has a detectable candidate.
-            stack[:, shape[0] // 2, shape[1] // 2] = 800
-            tifffile.imwrite(out_dir / f"{sample}_integrated_registered_overlap_crop.tif", stack)
-            (out_dir / f"{sample}_integrated_MarkerList.txt").write_text(
-                "\n".join(info["markers"]) + "\n"
-            )
-            (out_dir / f"{sample}_registration_summary.json").write_text(
-                json.dumps({"integrated_shape": [n_channels, *shape]})
-            )
-        features = pd.DataFrame(
-            {
-                "label": range(1, 6),
-                "y": RNG.uniform(0, shape[0], 5),
-                "x": RNG.uniform(0, shape[1], 5),
-            }
-        )
-        features.to_csv(out_dir / f"{info['region']}_features.csv", index=False)
+        _write_stack(out_dir, sample, region, markers, tiled_shape, tiled_spots)
+        _write_features(out_dir, region, tiled_shape, tiled_spots)
 
 
 def make_supplementary_1c_fixture(data_root: Path, shape: tuple[int, int] = (64, 64)) -> None:
