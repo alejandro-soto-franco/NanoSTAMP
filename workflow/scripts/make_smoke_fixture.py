@@ -211,10 +211,49 @@ def make_figure_2_fixture(data_root: Path, n_per_region: int = 25) -> None:
                 spot_rows.append(spot_row)
 
         obs = pd.DataFrame(obs_rows)
+        spot = pd.DataFrame(spot_rows)
+
+        # Force the first non-reference region's first few cells into a
+        # deterministic configuration (rather than leaving Sections 8-11's
+        # DC/CD4/CD8/B compound filters to random chance), so the smoke DAG
+        # actually exercises the neighbour-pair and marker-state code paths,
+        # not only their zero-target skip branches.
+        first_region = next(r for r in info["regions"] if r != "S2_reg004")
+        forced_labels = (
+            obs.loc[obs["region"] == first_region.split("_")[1], "label"].iloc[:10].tolist()
+        )
+        forced_spec = [
+            # (cell_type, lnp_call, lnp_positive, x, y, SIINFEKL_H-2Kb, OVA)
+            ("DC", "LNP_08", True, 100.0, 100.0, 25.0, 25.0),
+            ("DC", "LNP_10", True, 300.0, 300.0, 25.0, 25.0),
+            ("CD8+ T", "no_barcode", False, 102.0, 100.0, 5.0, 5.0),
+            ("CD8+ T", "no_barcode", False, 105.0, 100.0, 5.0, 5.0),
+            ("CD4+ T", "no_barcode", False, 302.0, 300.0, 5.0, 5.0),
+            ("B", "LNP_08", True, 150.0, 150.0, 5.0, 25.0),
+            ("B", "LNP_10", True, 350.0, 350.0, 5.0, 25.0),
+            ("CD4+ T", "no_barcode", False, 152.0, 150.0, 5.0, 5.0),
+            ("CD8+ T", "no_barcode", False, 302.0, 302.0, 5.0, 5.0),
+            ("CD4+ T", "no_barcode", False, 352.0, 350.0, 5.0, 5.0),
+        ]
+        for label, (cell_type, lnp_call, lnp_positive, x, y, siinfekl, ova) in zip(
+            forced_labels, forced_spec, strict=False
+        ):
+            obs.loc[obs["label"] == label, ["cell_type", "cell_type_pooled", "x", "y"]] = [
+                cell_type,
+                cell_type,
+                x,
+                y,
+            ]
+            obs.loc[obs["label"] == label, "SIINFEKL_H-2Kb"] = siinfekl
+            obs.loc[obs["label"] == label, "OVA"] = ova
+            obs.loc[obs["label"] == label, "CD86"] = 20.0
+            spot_mask = (spot["region"] == first_region) & (spot["cell"] == label)
+            spot.loc[spot_mask, "lnp_call"] = lnp_call
+            spot.loc[spot_mask, "lnp_positive"] = lnp_positive
+
         adata = ad.AnnData(X=np.zeros((len(obs), 1), dtype=np.float32), obs=obs)
         adata.write_h5ad(out_dir / f"smoke_{batch}_annotated.h5ad")
 
-        spot = pd.DataFrame(spot_rows)
         spot.to_csv(out_dir / "cell_analysis_table_all_regions_v4.csv", index=False)
         summary = (
             spot.groupby(["region", "lnp_call"], dropna=False)
