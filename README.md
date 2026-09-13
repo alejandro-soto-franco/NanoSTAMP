@@ -7,7 +7,7 @@ a Snakemake pipeline with an importable library, a pinned environment and
 tests. All credit for the underlying method and data belongs to the Hickey
 Lab; cite the associated manuscript.
 
-## What this analysis does
+## Analysis overview
 
 The study detects lipid-nanoparticle (LNP) barcodes in multiplexed spleen
 imaging and relates barcode-positive cells to cell type, spatial
@@ -79,11 +79,12 @@ NanoSTAMP/
 
 ## Config reference
 
-`config/config.yaml` holds every parameter, seed and path the original
+`config/config.yaml` lists every parameter, seed and path the original
 notebooks hardcoded, grouped by figure: tile sizes and cell-type cutoffs
 (Figure 1d/1e), k-nearest-neighbour and cluster counts (Figure 1f/1g, Figure
-2 neighbourhoods), the ten-entry LNP-formulation table, reference-region gate
-quantiles (Figure 2 cell/functional), and per-notebook spot-detection
+2 neighbourhoods), the ten-entry LNP-formulation table, reference-region
+positivity-threshold quantiles (Figure 2 cell/functional), and per-notebook
+spot-detection
 thresholds (raw-image rules). `config/smoke.yaml` overrides the data root to
 a synthetic fixture and shrinks every cluster/elbow parameter so the whole
 DAG runs in under a minute.
@@ -114,7 +115,7 @@ regenerate them by running the workflow.
 ## Parity with upstream
 
 The upstream notebooks are distributed **without stored outputs or execution
-counts** (confirmed: zero cells across all nine notebooks carry a stored
+counts** (confirmed: zero cells across all nine notebooks have a stored
 `outputs` array), so there is no notebook-recorded number to diff a ported
 run against. Because the Duke deposit could not be downloaded here (see
 "Data sources"), no real-data run has been produced either. `~/planning/NanoSTAMP/parity.md`
@@ -155,28 +156,28 @@ upstream value where the fix changes a reported number):
   algorithms (LoG-candidate detection + Hamming-distance barcode decoding;
   Cellpose/threshold nuclear segmentation), each with different marker
   panels and thresholds; `nanostamp.spot_detection` implements each
-  algorithm once, parameterised by `config.yaml`. Per-run threshold
-  calibration (grid search over PBS/positive control fields), the tiled,
-  checkpointed processing the original notebooks needed for
-  hundred-gigabyte stacks, the optional CuPy GPU path, and the raw-intensity
-  "rescue" candidate pass are not ported: none of them change a decoded
-  barcode for a given threshold, and none are exercisable without the
-  excluded raw images. These rules are runnable only once a user supplies
-  real TIFFs; `pixi run smoke` exercises the same code path against a tiny
-  synthetic stack instead.
-- **Figure 2 spatial-neighbourhood Sections 8-11 are not ported.** The
+  algorithm once, parameterised by `config.yaml`. The port covers detection
+  and decoding at a fixed threshold only. Per-run threshold calibration
+  (grid search over PBS/positive control fields), the tiled, checkpointed
+  processing the original notebooks needed for hundred-gigabyte stacks, the
+  optional CuPy GPU path, and the raw-intensity "rescue" candidate pass stay
+  out of scope, since none of them change a decoded barcode for a given
+  threshold and none are exercisable without the excluded raw images. These
+  rules run only once a user supplies real TIFFs; `pixi run smoke` exercises
+  the same code path against a tiny synthetic stack instead.
+- **Figure 2 spatial-neighbourhood Sections 8-11 stay out of scope.** The
   source notebook continues past the neighbourhood clustering (ported in
   full) into roughly fifteen near-identical paired-region distance/marker
   analyses between LNP_08- and LNP_10-positive dendritic, CD8, CD4 and B
   cells. Two shared, reusable functions are ported
   (`collect_neighbor_pairs`, `paired_region_ttest`) so any of those
-  analyses can be run against them, but the ~30 individual output tables
-  are not each reproduced as a named function; see
+  analyses can be built from them; the ~30 individual output tables each
+  stay as a documented gap rather than a named function, listed in
   `nanostamp.spatial_neighborhood`'s module docstring.
-- **Figure 2 cell/functional Sections 9-10 are not ported as library
-  functions.** Section 9 is a three-region spatial overlay figure and
-  Section 10 re-derives plot data from tables already computed in Sections
-  3-8; neither adds new computation.
+- **Figure 2 cell/functional Sections 9-10 stay as workflow concerns, not
+  library functions.** Section 9 is a three-region spatial overlay figure
+  and Section 10 re-derives plot data from tables already computed in
+  Sections 3-8; neither adds new computation.
 - Every `savefig`/`plt.show()` in the source notebooks is inert (confirmed:
   no notebook actually writes a PDF/PNG despite several printing `"Saved:
   ..."`); this port's rules do write real PDF/PNG figures where a figure is
