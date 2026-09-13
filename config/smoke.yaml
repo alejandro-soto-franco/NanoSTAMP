@@ -32,6 +32,7 @@ figure_2_cell_functional:
   reference_gate_quantile: 0.95
   siinfekl_gate_quantile: 0.9
   fix_bcell_uptake_denominator_bug: true
+  selected_overlay_regions: ["S2_reg001", "S2_reg002", "S2_reg003"]
 
 figure_2_spatial_neighborhood:
   k_neighbors: 5
@@ -43,6 +44,16 @@ figure_2_spatial_neighborhood:
   gate_quantile: 0.95
   siinfekl_gate_quantile: 0.9
   robust_self_exclusion: true
+
+figure_2_spatial_neighborhood_distance:
+  um_per_coordinate_unit: 0.5
+  siinfekl_gate_quantile: 0.9
+  cd8_neighbor_k_values: [3, 5]
+  cd8_radius_values: [15, 30]
+  cd8_state_markers: ["FOXP3", "PD1", "GZMB"]
+  dc_state_markers: ["CD86", "MHCII"]
+  cd4_activation_markers: ["FOXP3", "PD1"]
+  ova_b_state_markers: ["CD19", "CD138", "CD25"]
 
 raw_image_spot_detection:
   full_barcode:

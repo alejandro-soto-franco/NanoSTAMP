@@ -47,6 +47,8 @@ figure_2_cell_functional:
   # synthetic Tissue_average row, inflating it (see README "Differences from
   # upstream"). true = fixed denominator (default); false = upstream value.
   fix_bcell_uptake_denominator_bug: true
+  # Section 9's spatial overlay is restricted to these regions.
+  selected_overlay_regions: ["S2_reg001", "S2_reg002", "S2_reg003"]
 
 # Figure 2 / Supplementary Figures 9-11: multiplex LNP spatial neighbourhood analysis.
 figure_2_spatial_neighborhood:
@@ -64,6 +66,26 @@ figure_2_spatial_neighborhood:
   # "Differences from upstream"). true = robust index-matched exclusion
   # (default, used uniformly); false = upstream positional-drop behaviour.
   robust_self_exclusion: true
+
+# Figure 2 / Supplementary Figures 9-11, Sections 8-12: SIINFEKL+/OVA+
+# DC-CD8/CD4 and OVA+ B-CD4 distance analyses, and the eight final paired
+# panel re-derivations.
+figure_2_spatial_neighborhood_distance:
+  um_per_coordinate_unit: 0.5
+  siinfekl_gate_quantile: 0.9
+  cd8_neighbor_k_values: [3, 5, 8, 10, 15, 20, 25]
+  cd8_radius_values: [15, 20, 25, 30]
+  cd8_state_markers:
+    ["CD3", "TCRb", "CD8a", "CD45.2", "CD90", "CD25", "CD27", "CD28", "CD44",
+     "CD62L", "CCR7", "CD103", "SCA1", "PD1", "CD152", "GZMB", "FOXP3"]
+  dc_state_markers: ["CD11c", "CD11b", "CD103", "CD45.2", "MHCII", "CD86", "CCR7", "SIINFEKL_H-2Kb"]
+  cd4_activation_markers:
+    ["CD3", "TCRb", "CD4", "CD45.2", "CD90", "CD25", "CD27", "CD28", "CD44",
+     "CD62L", "CCR7", "CD103", "SCA1", "PD1", "CD152", "GZMB", "FOXP3"]
+  ova_b_state_markers:
+    ["B220", "CD19", "CD45.2", "CD138", "MHCII", "CD86", "SIINFEKL_H-2Kb",
+     "CD25", "CD27", "CD44", "SCA1", "PD1", "CD152", "CCR7", "CD62L",
+     "CD11b", "CD11c", "OVA"]
 
 # Raw-image spot detection (Figures 1d/1e, 2, Supplementary Figure 1c). These
 # rules are defined against the documented raw-data layout but only runnable

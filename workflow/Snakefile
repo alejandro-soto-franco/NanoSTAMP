@@ -31,6 +31,7 @@ include: "rules/spleen_lnp.smk"
 include: "rules/neighborhoods.smk"
 include: "rules/cell_functional.smk"
 include: "rules/spatial_neighborhood.smk"
+include: "rules/spatial_neighborhood_distance.smk"
 include: "rules/raw_image_spot_detection.smk"
 
 
@@ -41,6 +42,7 @@ rule all:
         f"{RESULTS_ROOT}/figure_1f_1g/tables",
         f"{RESULTS_ROOT}/figure_2_cell_functional/tables",
         f"{RESULTS_ROOT}/figure_2_spatial_neighborhood/tables",
+        f"{RESULTS_ROOT}/figure_2_spatial_neighborhood_distance/tables",
 
 
 rule all_smoke:

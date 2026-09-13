@@ -63,6 +63,12 @@ centroid_percent, name_table, neighbor_cells, ordered_names = fit_and_name_neigh
 centroid_percent.to_csv(out_dir / "neighborhood_cell_type_composition_percent.csv")
 name_table.to_csv(out_dir / "neighborhood_name_key.csv", index=False)
 neighbor_cells.to_csv(out_dir / "cell_neighborhood_assignments.csv", index=False)
+# Raw per-cell neighbour-type fractions, row-aligned with the assignments
+# CSV above; Sections 8-11 (run_spatial_neighborhood_distance.py) need this
+# to compute direct neighbour-composition summaries for a target subset.
+composition.reset_index(drop=True).to_csv(
+    out_dir / "neighbor_composition_fractions.csv", index=False
+)
 
 lnp_abundance = summarize_lnp_neighborhood_distribution(neighbor_cells, ordered_names=ordered_names)
 lnp_abundance.to_csv(out_dir / "corrected_lnp_neighborhood_abundance.csv")
